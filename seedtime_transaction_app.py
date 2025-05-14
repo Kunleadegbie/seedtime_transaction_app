@@ -1,4 +1,4 @@
-#new script
+# Latest script
 import streamlit as st
 import pandas as pd
 from io import BytesIO
@@ -74,41 +74,87 @@ if st.session_state.transactions:
 
     # Compute balances and ROI
     maturity_date = initial_date + pd.to_timedelta(tenor, unit='D')
-    balance = 0.0
-    total_roi = 0.0
+    deposit_ledger = []
     rows = []
 
     for i, row in df.iterrows():
-        days_remaining = (maturity_date - row["Date"]).days
-        if days_remaining < 0:
-            days_remaining = 0  # don't compute past maturity
+        txn_date = row["Date"]
+        txn_type = row["Transaction"]
+        amount = row["Amount"]
 
-        if row["Transaction"] == "Deposit":
-            balance += row["Amount"]
-        elif row["Transaction"] == "Withdrawal":
-            balance -= row["Amount"]
+        # Accrue interest on existing deposits up to txn date
+        for deposit in deposit_ledger:
+            days = (txn_date - deposit['last_updated']).days
+            if days > 0:
+                rate = get_client_rate(deposit['amount'])
+                interest = compute_compound_interest(deposit['amount'], rate, days)
+                deposit['roi'] += interest
+                deposit['amount'] += interest
+                deposit['last_updated'] = txn_date
 
-        client_rate = get_client_rate(balance)
-        roi = compute_compound_interest(balance, client_rate, days_remaining)
-        total_value = balance + roi
+        # Apply current transaction
+        if txn_type == "Deposit":
+            deposit_ledger.append({
+                "amount": amount,
+                "date": txn_date,
+                "last_updated": txn_date,
+                "roi": 0.0
+            })
+        elif txn_type == "Withdrawal":
+            # Deduct from deposits starting from oldest
+            remaining = amount
+            deposit_ledger.sort(key=lambda x: x['date'])
+            for deposit in deposit_ledger:
+                if remaining <= 0:
+                    break
+                if deposit['amount'] <= remaining:
+                    remaining -= deposit['amount']
+                    deposit['amount'] = 0
+                else:
+                    deposit['amount'] -= remaining
+                    remaining = 0
+            deposit_ledger = [d for d in deposit_ledger if d['amount'] > 0]
 
+        # Calculate total principal and ROI so far
+        total_principal = sum(d['amount'] for d in deposit_ledger)
+        total_roi = sum(d['roi'] for d in deposit_ledger)
+
+        # Add to rows
         rows.append({
-            "Date": row["Date"],
-            "Transaction": row["Transaction"],
-            "Amount": row["Amount"],
-            "Balance After Txn": balance,
-            "Tenor Remaining (days)": days_remaining,
-            "Client Rate (%)": round(client_rate, 2),
-            "ROI (NGN)": round(roi, 2),
-            "Total Value (Principal + ROI)": round(total_value, 2)
+            "Date": txn_date,
+            "Transaction": txn_type,
+            "Amount": amount,
+            "Balance After Txn": round(total_principal, 2),
+            "Client Rate (%)": round(get_client_rate(total_principal), 2),
+            "Total ROI (NGN)": round(total_roi, 2)
         })
 
-    final_df = pd.DataFrame(rows)
+    # At maturity date, compute ROI for remaining days on each deposit
+    for deposit in deposit_ledger:
+        if deposit['last_updated'] < maturity_date:
+            days = (maturity_date - deposit['last_updated']).days
+            if days > 0:
+                rate = get_client_rate(deposit['amount'])
+                interest = compute_compound_interest(deposit['amount'], rate, days)
+                deposit['roi'] += interest
+                deposit['amount'] += interest
+                deposit['last_updated'] = maturity_date
 
-    # Totals
-    total_principal = final_df["Balance After Txn"].iloc[-1]
-    total_roi = final_df["ROI (NGN)"].iloc[-1]
-    total_value = final_df["Total Value (Principal + ROI)"].iloc[-1]
+    total_principal = sum(d['amount'] for d in deposit_ledger)
+    total_roi = sum(d['roi'] for d in deposit_ledger)
+    total_value = total_principal
+
+    # Append final maturity row
+    rows.append({
+        "Date": maturity_date,
+        "Transaction": "Maturity",
+        "Amount": 0.0,
+        "Balance After Txn": round(total_principal, 2),
+        "Client Rate (%)": round(get_client_rate(total_principal), 2),
+        "Total ROI (NGN)": round(total_roi, 2)
+    })
+
+    final_df = pd.DataFrame(rows)
 
     st.subheader(f"Transaction Statement for {client_name} ({account_number})")
     st.write(final_df)
