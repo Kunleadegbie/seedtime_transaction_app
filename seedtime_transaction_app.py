@@ -1,4 +1,4 @@
-# Latest script
+# Last script adjustment
 import streamlit as st
 import pandas as pd
 from io import BytesIO
@@ -6,16 +6,49 @@ from datetime import datetime
 
 # Company info
 COMPANY_NAME = "SEETIME CAPITAL MANAGEMENT LIMITED"
-BASE_RATE = 20.66  # p.a.
 
-# Function to get client rate based on deposit amount
+# Adjustable Base Rate and Margin input
+if 'base_rate' not in st.session_state:
+    st.session_state.base_rate = 20.66  # default value for base rate
+
+if 'margin_1' not in st.session_state:
+    st.session_state.margin_1 = 2.0  # default margin for deposits up to 50,000
+
+if 'margin_2' not in st.session_state:
+    st.session_state.margin_2 = 3.0  # default margin for deposits from 50,001 to 499,000
+
+if 'margin_3' not in st.session_state:
+    st.session_state.margin_3 = 4.0  # default margin for deposits over 499,000
+
+# Title and Base Rate input
+st.title(f"{COMPANY_NAME} - Client Transaction Statement")
+
+st.subheader("Set Base Interest Rate (% p.a.)")
+st.session_state.base_rate = st.number_input(
+    "Base Rate (%)", min_value=0.0, max_value=100.0, value=st.session_state.base_rate, step=0.01
+)
+
+# Margin input fields based on deposit ranges
+st.subheader("Set Company Margins for Deposit Ranges")
+st.session_state.margin_1 = st.number_input(
+    "Margin for Deposits <= 50,000 (NGN)", min_value=0.0, value=st.session_state.margin_1, step=0.01
+)
+st.session_state.margin_2 = st.number_input(
+    "Margin for Deposits 50,001 - 499,000 (NGN)", min_value=0.0, value=st.session_state.margin_2, step=0.01
+)
+st.session_state.margin_3 = st.number_input(
+    "Margin for Deposits > 499,000 (NGN)", min_value=0.0, value=st.session_state.margin_3, step=0.01
+)
+
+# Function to get client rate based on deposit amount and the margin
 def get_client_rate(amount):
+    base_rate = st.session_state.base_rate
     if amount <= 50000:
-        return BASE_RATE - 8.66
+        return base_rate - st.session_state.margin_1
     elif amount <= 499000:
-        return BASE_RATE - 7.66
+        return base_rate - st.session_state.margin_2
     else:
-        return BASE_RATE - 6.66
+        return base_rate - st.session_state.margin_3
 
 # Compounding interest calculator
 def compute_compound_interest(principal, rate, days):
@@ -25,8 +58,6 @@ def compute_compound_interest(principal, rate, days):
 # Initialize session state for transaction history
 if 'transactions' not in st.session_state:
     st.session_state.transactions = []
-
-st.title(f"{COMPANY_NAME} - Client Transaction Statement")
 
 # Input fields
 client_name = st.text_input("Client Name")
