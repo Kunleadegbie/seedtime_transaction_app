@@ -4,7 +4,7 @@ from io import BytesIO, StringIO
 from datetime import datetime, timedelta
 
 # Company Name
-COMPANY_NAME = "SEETIME CAPITAL MANAGEMENT LIMITED"
+COMPANY_NAME = "SEEDTIME CAPITAL MANAGEMENT LIMITED"
 
 # Function to get client's interest rate based on deposit amount and base rate
 def get_client_rate(amount, base_rate):
